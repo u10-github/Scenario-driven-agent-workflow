@@ -233,6 +233,29 @@ At deployment time, the AI checks the actual environment:
 
 Then the AI compiles the scenario into a concrete plan for that environment.
 
+## Practical guardrails added in this repository
+
+This repository includes a few small reference pieces to make the pattern more concrete:
+
+```text
+schema/scenario.schema.json
+  A JSON Schema for scenario YAML shape and required sections.
+
+docs/approval-protocol.md
+  A machine-checkable approval marker for irreversible actions.
+
+docs/comparison.md
+  A comparison with AGENTS.md, skills, hooks, hosted coding agents, and CI.
+
+scripts/agents/agentctl.sh
+  A conservative reference script that demonstrates doctor, status, merge-report,
+  and guarded merge-after-human-approval commands.
+```
+
+These files are intentionally small.
+
+They are not a complete framework. They are examples of how the pattern can move from instruction text toward reproducible checks.
+
 ## Example: the author's coding workflow
 
 The author's first concrete use case is a GitHub-based coding workflow.
@@ -293,11 +316,12 @@ Creates a merge-readiness report.
 Stops for human approval.
 
 Human:
-Approved. You may merge.
+APPROVE_MERGE issue=123 pr=45 head=abc1234 report=codex-merge-report:v1
 
 AI:
 Runs the guarded merge script.
-Closes the linked Issue.
+The script verifies the approval marker, PR head, evidence, and checks.
+If the guard passes, the script merges the PR and closes the linked Issue.
 ```
 
 This is only one example.
@@ -322,10 +346,19 @@ docs/
   authoring-guide.md
   deployment-lifecycle.md
   model-and-cost-policy.md
+  approval-protocol.md
+  comparison.md
+
+schema/
+  scenario.schema.json
 
 scenarios/
   _template.yaml
   issue-pr-to-merge-gate.example.yaml
+
+scripts/
+  agents/
+    agentctl.sh
 ```
 
 ## This is an idea seed
