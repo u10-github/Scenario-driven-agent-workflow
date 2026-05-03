@@ -11,39 +11,6 @@ This repository describes the idea in plain English.
 
 It is not a product, framework, or official standard. It is a pattern that others can copy, change, and develop in their own way.
 
-## What should I do next?
-
-If you want to try this idea, do not start by building a full framework.
-
-Start by asking a strong reasoning AI to adapt the scenario to your own environment.
-
-For example:
-
-```text
-Read the Scenario-driven agent workflow idea.
-
-Using the scenario YAML as a blueprint, design a workflow for my project.
-
-Do not assume my environment is the same as the author's.
-
-First, check what tools are available.
-Then decide which parts should be scripts, which parts should be handled by AI, and where human approval is required.
-
-Create:
-- an AGENTS.md fragment,
-- skill or instruction files if useful,
-- a command script layer,
-- evidence formats,
-- human approval gates,
-- and a short setup plan.
-
-Do not perform irreversible actions without explicit approval.
-```
-
-The scenario file is not meant to be executed blindly.
-
-It is meant to help an AI agent create a workflow that fits your tools, your project, and your risk tolerance.
-
 ## Core idea
 
 This repository is not mainly about YAML.
@@ -327,6 +294,39 @@ scenarios/
   _template.yaml
   issue-pr-to-merge-gate.example.yaml
 ```
+
+## What should I do next?
+
+If you want to try this idea, do not start by building a full framework.
+
+Start by asking a strong reasoning AI to adapt the scenario to your own environment.
+
+For example:
+
+```text
+Read the Scenario-driven agent workflow idea.
+
+Using the scenario YAML as a blueprint, design a workflow for my project.
+
+Do not assume my environment is the same as the author's.
+
+First, check what tools are available.
+Then decide which parts should be scripts, which parts should be handled by AI, and where human approval is required.
+
+Create:
+- an AGENTS.md fragment,
+- skill or instruction files if useful,
+- a command script layer,
+- evidence formats,
+- human approval gates,
+- and a short setup plan.
+
+Do not perform irreversible actions without explicit approval.
+```
+
+The scenario file is not meant to be executed blindly.
+
+It is meant to help an AI agent create a workflow that fits your tools, your project, and your risk tolerance.
 
 ## This is an idea seed
 
