@@ -1,0 +1,194 @@
+id: example-scenario
+name: Example scenario
+version: 0.1.0
+
+purpose: >
+  Describe what this scenario is trying to accomplish.
+
+non_goals:
+  - Describe what this scenario must not do.
+
+invariants:
+  - Human approval is required before irreversible operations.
+  - Evidence must be recorded before finalization.
+
+actors:
+  human:
+    responsibilities:
+      - Provide goals, decisions, and approvals.
+
+  planner_agent:
+    default: codex
+    responsibilities:
+      - Classify the work.
+      - Prepare decision briefs.
+      - Adapt the scenario to the environment.
+
+  executor_agent:
+    default: default-executor
+    responsibilities:
+      - Execute the main task within boundaries.
+      - Self-review its own output.
+
+  reviewer_agent:
+    default: strong-reviewer
+    responsibilities:
+      - Review results.
+      - Write final reports.
+
+  command_suite:
+    responsibilities:
+      - Run deterministic commands.
+      - Check state.
+      - Record evidence.
+      - Enforce safety gates.
+
+dependencies:
+  required:
+    - id: git
+      check: command -v git
+      missing: stop
+
+  recommended:
+    - id: example-cli
+      check: command -v example-cli
+      fallback:
+        - id: report-only
+          description: Continue in report-only mode.
+
+  optional: []
+
+install_policy:
+  project_local_dependency: allow_with_notice
+  dev_dependency: allow_with_notice
+  global_cli: human_required
+  auth_login: human_required
+  secret_write: forbidden
+  billing_or_paid_service: human_required
+  sudo_or_system_package: human_required
+
+runtime_modes:
+  - id: full-auto
+    description: Preferred tools are available.
+    requires:
+      - git
+      - example-cli
+
+  - id: report-only
+    description: Write operations are unavailable. Produce reports only.
+    requires:
+      - git
+
+model_policy:
+  cheap_or_fast:
+    use_for:
+      - status_summary
+      - formatting
+
+  medium:
+    use_for:
+      - implementation
+      - self_review
+
+  strong:
+    use_for:
+      - classification
+      - risk_review
+      - final_report
+
+  human:
+    required_for:
+      - approval
+      - external_context
+      - irreversible_operation
+
+state:
+  local:
+    - .agent/state/current.json
+  durable:
+    - issue_or_pr_comments
+
+entrypoints:
+  preflight:
+    command: agentctl preflight example-scenario
+  start:
+    command: agentctl start example-scenario
+  resume:
+    command: agentctl resume-current
+  finalize:
+    command: agentctl finalize-current
+
+steps:
+  - id: preflight
+    type: verify
+    actor: command_suite
+    description: Check whether the environment can run this scenario.
+
+  - id: classify
+    type: classify
+    actor: planner_agent
+    description: Decide whether the work can proceed, needs human decision, or must stop.
+
+  - id: execute
+    type: execute
+    actor: executor_agent
+    description: Run the main task.
+
+  - id: self_review
+    type: self_review
+    actor: executor_agent
+    description: Review the executor output before external review.
+
+  - id: verify
+    type: verify
+    actor: command_suite
+    description: Run checks and collect results.
+
+  - id: record_evidence
+    type: record_evidence
+    actor: command_suite
+    description: Store durable evidence.
+
+  - id: review
+    type: review
+    actor: reviewer_agent
+    description: Review final output.
+
+  - id: human_gate
+    type: human_approval
+    actor: human
+    description: Ask for human approval before irreversible action.
+
+  - id: finalize
+    type: finalize
+    actor: command_suite
+    description: Perform guarded final action only after approval.
+
+evidence:
+  markers:
+    - example-evidence:v1
+    - example-final-report:v1
+
+human_gates:
+  - id: final_approval
+    trigger: before_irreversible_operation
+    required_output: explicit_human_approval
+
+safety:
+  stop_conditions:
+    - secrets_change
+    - billing_change
+    - production_deploy
+    - destructive_data_change
+    - unclear_goal
+  irreversible_operations:
+    require_human_approval: true
+
+fallback_policy:
+  when_dependency_missing: ask_human_with_recommendation
+  when_auth_missing: human_required
+  when_write_permission_missing: offer_report_only
+  when_global_install_needed: ask_human
+
+verification:
+  commands: []
