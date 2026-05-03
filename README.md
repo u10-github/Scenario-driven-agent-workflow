@@ -242,7 +242,7 @@ schema/scenario.schema.json
   A JSON Schema for scenario YAML shape and required sections.
 
 docs/approval-protocol.md
-  A machine-checkable approval marker for irreversible actions.
+  A low-friction, machine-checkable approval record for irreversible actions.
 
 docs/comparison.md
   A comparison with AGENTS.md, skills, hooks, hosted coding agents, and CI.
@@ -316,11 +316,12 @@ Creates a merge-readiness report.
 Stops for human approval.
 
 Human:
-APPROVE_MERGE issue=123 pr=45 head=abc1234 report=codex-merge-report:v1
+Looks good. Merge it.
 
 AI:
-Runs the guarded merge script.
-The script verifies the approval marker, PR head, evidence, and checks.
+Runs the guarded merge script with HUMAN_APPROVED_MERGE=yes.
+The script records a structured approval marker on the PR.
+The script verifies the PR head, evidence, and checks.
 If the guard passes, the script merges the PR and closes the linked Issue.
 ```
 
