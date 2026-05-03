@@ -1,0 +1,511 @@
+id: dependency-security-governance
+name: Dependency and security governance
+version: 0.1.0
+
+purpose: >
+  Create an AI-adapted workflow for an existing or new repository that audits the
+  code dependency structure and security posture, proposes multiple remediation
+  and maintenance policies, waits for human agreement, then implements reversible
+  guardrails, fixes, and evidence recording.
+
+non_goals:
+  - Do not rewrite the entire architecture in one step.
+  - Do not deploy to production.
+  - Do not change secrets, credentials, or production configuration values.
+  - Do not enable paid services or billing-sensitive tools without human approval.
+  - Do not merge or apply irreversible changes without explicit human approval.
+  - Do not treat scanner output as automatically correct without triage.
+
+invariants:
+  - Baseline evidence must be recorded before remediation begins.
+  - Dependency and security policy choices must be presented as multiple options with tradeoffs.
+  - Human agreement is required before implementing architecture or security policy changes.
+  - Guardrails should prefer small, reversible changes before broad refactors.
+  - New checks must be maintainable by future AI agents and visible to humans.
+  - Secret values, tokens, private keys, and personal data must never be pasted into evidence.
+
+actors:
+  human:
+    responsibilities:
+      - Provide the target repository or confirm that a new repository should be initialized.
+      - Choose or approve the dependency-boundary and security-maintenance policy.
+      - Decide risk acceptance for findings that cannot be fixed safely in the current change.
+      - Approve irreversible operations, paid services, auth changes, and production-impacting changes.
+
+  planner_agent:
+    default: codex
+    responsibilities:
+      - Inspect repository language, framework, package manager, and current command surface.
+      - Classify the repository as existing, new, monorepo, library, app, or mixed.
+      - Prepare decision briefs with multiple policy options and clear tradeoffs.
+      - Decide which checks should be scripts, CI jobs, documentation, or manual review gates.
+
+  dependency_reviewer_agent:
+    default: strong-reviewer
+    responsibilities:
+      - Analyze dependency direction, layering, module boundaries, and extension points.
+      - Identify boundary violations, cycles, unstable dependencies, and high-risk coupling.
+      - Propose options such as core-extension boundaries, clean architecture, feature slices, or package-level rules.
+      - Review whether proposed fixes reduce future agentic-coding drift.
+
+  security_reviewer_agent:
+    default: strong-reviewer
+    responsibilities:
+      - Analyze security posture using available static analysis, dependency audit, and secret scanning tools.
+      - Triage findings by severity, exploitability, confidence, and fix risk.
+      - Propose security baseline, suppression, exception, and maintenance policies.
+      - Review whether evidence excludes secrets and sensitive data.
+
+  executor_agent:
+    default: default-executor
+    aliases:
+      codex-mini-high: codex-gpt5.4mini-high
+      opencode: opencode-default
+      manual: guided-manual
+    responsibilities:
+      - Implement approved guardrails and safe remediation changes.
+      - Add local scripts, package scripts, CI configuration, documentation, or policy files as approved.
+      - Fix only findings that are within the agreed scope.
+      - Self-review for regressions, overbroad refactors, and unjustified suppressions.
+
+  command_suite:
+    default: repo-governancectl
+    responsibilities:
+      - Run deterministic repository inspection commands.
+      - Run dependency graph checks and security scans where available.
+      - Record baseline, decision, remediation, and maintenance evidence.
+      - Enforce stop conditions before destructive or sensitive operations.
+
+dependencies:
+  required:
+    - id: git
+      check: command -v git
+      missing: stop
+
+  recommended:
+    - id: package-manager
+      check: test -f package.json || test -f pyproject.toml || test -f go.mod || test -f Gemfile || test -f Cargo.toml
+      missing: fallback
+      fallback:
+        - id: manual-inventory
+          description: Produce repository inventory and policy options without package-manager commands.
+
+    - id: dependency-boundary-tool
+      check: command -v depcruise || command -v madge || command -v import-linter
+      missing: fallback
+      fallback:
+        - id: language-native-boundary-checks
+          description: Use language-native import or module checks.
+        - id: manual-architecture-review
+          description: Produce architecture findings and proposed rules without automated enforcement.
+
+    - id: sast-tool
+      check: command -v semgrep || command -v ruff || command -v eslint || command -v gosec || command -v bandit
+      missing: fallback
+      fallback:
+        - id: report-only-security-review
+          description: Produce security review guidance without running SAST.
+
+    - id: secret-scanner
+      check: command -v gitleaks || command -v trufflehog
+      missing: fallback
+      fallback:
+        - id: secret-pattern-check
+          description: Use limited pattern checks for obvious secret-like strings and recommend a dedicated scanner.
+
+    - id: vulnerability-scanner
+      check: command -v osv-scanner || command -v trivy || npm audit --version || pip-audit --version
+      missing: fallback
+      fallback:
+        - id: package-manager-audit
+          description: Use the package manager audit command when available.
+        - id: advisory-review-gap
+          description: Record that vulnerability scanning still needs setup.
+
+  optional:
+    - id: gh
+      check: command -v gh
+      fallback:
+        - id: local-evidence
+          description: Store evidence in repository files instead of GitHub Issues or PR comments.
+    - id: jq
+      check: command -v jq
+      fallback:
+        - id: python-json
+          description: Use Python JSON handling.
+    - id: graphviz
+      check: command -v dot
+      fallback:
+        - id: text-graph-report
+          description: Record dependency graph findings as text instead of images.
+
+install_policy:
+  project_local_dependency: allow_with_notice
+  dev_dependency: allow_with_notice
+  global_cli: human_required
+  auth_login: human_required
+  secret_write: forbidden
+  billing_or_paid_service: human_required
+  sudo_or_system_package: human_required
+  ci_secret_or_permission_change: human_required
+
+runtime_modes:
+  - id: full-auto
+    description: Repository write access and preferred dependency/security tools are available.
+    requires:
+      - git
+      - package-manager
+      - dependency-boundary-tool
+      - sast-tool
+      - secret-scanner
+      - vulnerability-scanner
+
+  - id: language-adapted
+    description: Some preferred tools are missing, but the planner can map the scenario to language-native tools.
+    requires:
+      - git
+      - package-manager
+
+  - id: report-only
+    description: Write operations or scanners are unavailable. Produce baseline, options, and setup instructions only.
+    requires:
+      - git
+
+model_policy:
+  cheap_or_fast:
+    use_for:
+      - command_output_summarization
+      - inventory_table_formatting
+      - README_or_comment_formatting
+
+  medium:
+    use_for:
+      - implementing_approved_scripts
+      - implementing_low_risk_config_changes
+      - fixing_low_risk_findings
+      - self_review
+
+  strong:
+    use_for:
+      - dependency_policy_design
+      - security_triage
+      - option_comparison
+      - risk_review
+      - final_maintenance_plan
+
+  human:
+    required_for:
+      - policy_selection
+      - risk_acceptance
+      - secrets_or_auth_changes
+      - paid_service_enablement
+      - broad_refactor_approval
+      - irreversible_operation
+
+state:
+  local:
+    - .agent/state/dependency-security-governance/current.json
+    - .agent/evidence/dependency-security-governance/baseline.md
+    - .agent/evidence/dependency-security-governance/decision.md
+    - .agent/evidence/dependency-security-governance/final-report.md
+  durable:
+    - repository_committed_docs
+    - pull_request_comments
+    - issue_comments
+    - ci_artifacts
+
+entrypoints:
+  doctor:
+    command: scripts/agents/repo-governancectl.sh doctor
+  baseline:
+    command: scripts/agents/repo-governancectl.sh baseline
+  options:
+    command: scripts/agents/repo-governancectl.sh options
+  apply_after_policy_approval:
+    command: HUMAN_APPROVED_POLICY=yes scripts/agents/repo-governancectl.sh apply-approved-policy
+  verify:
+    command: scripts/agents/repo-governancectl.sh verify
+  report:
+    command: scripts/agents/repo-governancectl.sh report
+
+decision_options:
+  dependency_policies:
+    - id: minimal-guardrails
+      description: Add cycle checks, import linting, and a short architecture note.
+      tradeoff: Low disruption but weaker long-term control.
+    - id: core-extension
+      description: Define stable core modules and extension or adapter modules.
+      tradeoff: Clear dependency direction with moderate folder and naming discipline.
+    - id: clean-architecture
+      description: Define domain, application, infrastructure, and UI boundaries.
+      tradeoff: Strong separation but higher migration and false-positive cost.
+    - id: feature-sliced
+      description: Organize by feature with explicit shared-layer rules.
+      tradeoff: Useful for product repositories, but shared code can become a dumping ground.
+  security_policies:
+    - id: lightweight-local
+      description: Use package-manager audit, secret scanning, and existing linters.
+      tradeoff: Low setup cost but inconsistent coverage.
+    - id: semgrep-vulnerability-secret-baseline
+      description: Use SAST, dependency vulnerability scan, and secret scan with triage.
+      tradeoff: Good general baseline but requires suppression policy.
+    - id: ci-required-gates
+      description: Make selected scans required checks after false-positive rate is understood.
+      tradeoff: Strong maintenance but can block work if too strict too early.
+    - id: report-only
+      description: Record setup plan when tools or permissions are unavailable.
+      tradeoff: Safe start but no automated enforcement yet.
+
+steps:
+  - id: preflight
+    type: verify
+    actor: command_suite
+    description: Check git state, write permissions, package managers, scanners, CI files, and safe evidence locations.
+    outputs:
+      - repo-governance-preflight:v1
+
+  - id: repository_intake
+    type: classify
+    actor: planner_agent
+    description: Classify repository type, language, framework, package manager, deployment sensitivity, and existing versus new status.
+    requires:
+      - repo-governance-preflight:v1
+    outputs:
+      - repo-intake:v1
+
+  - id: baseline_inventory
+    type: verify
+    actor: command_suite
+    description: Record current scripts, manifests, lockfiles, CI checks, dependency tools, security tools, and policy files.
+    requires:
+      - repo-intake:v1
+    outputs:
+      - repo-baseline-inventory:v1
+
+  - id: dependency_structure_audit
+    type: review
+    actor: dependency_reviewer_agent
+    description: Analyze module boundaries, dependency direction, import cycles, framework leakage, core-extension seams, and architecture drift risks.
+    requires:
+      - repo-baseline-inventory:v1
+    outputs:
+      - dependency-structure-audit:v1
+
+  - id: security_baseline_audit
+    type: review
+    actor: security_reviewer_agent
+    description: Run or simulate static analysis, dependency vulnerability checks, secret scanning, config review, and unsafe pattern review.
+    requires:
+      - repo-baseline-inventory:v1
+    outputs:
+      - security-baseline-audit:v1
+
+  - id: policy_options
+    type: classify
+    actor: planner_agent
+    description: Present multiple dependency and security policy options with pros, cons, typical tools, cost, false-positive risk, and maintenance burden.
+    requires:
+      - dependency-structure-audit:v1
+      - security-baseline-audit:v1
+    outputs:
+      - repo-governance-options:v1
+    gates:
+      - type: human_approval
+        marker: HUMAN_DECISION_REQUIRED
+
+  - id: human_policy_agreement
+    type: human_approval
+    actor: human
+    description: Choose the policy option or approve a hybrid policy before implementation.
+    requires:
+      - repo-governance-options:v1
+    outputs:
+      - human-policy-agreement:v1
+
+  - id: implementation_plan
+    type: classify
+    actor: planner_agent
+    description: Convert the approved policy into a small, reversible implementation plan with files, commands, rollback notes, and verification criteria.
+    requires:
+      - human-policy-agreement:v1
+    outputs:
+      - repo-governance-implementation-plan:v1
+
+  - id: implement_guardrails
+    type: execute
+    actor: executor_agent
+    description: Add approved scripts, config files, CI checks, documentation, suppressions with rationale, and architecture rules.
+    requires:
+      - repo-governance-implementation-plan:v1
+    outputs:
+      - repo-governance-changes:v1
+
+  - id: remediate_findings
+    type: execute
+    actor: executor_agent
+    description: Fix approved low-risk dependency and security findings without broad rewrites or unrelated cleanup.
+    requires:
+      - repo-governance-changes:v1
+    outputs:
+      - repo-governance-remediation:v1
+
+  - id: self_review
+    type: self_review
+    actor: executor_agent
+    description: Confirm the changes match the approved policy and do not hide findings through unjustified suppressions.
+    requires:
+      - repo-governance-remediation:v1
+    outputs:
+      - repo-governance-self-review:v1
+
+  - id: verification
+    type: verify
+    actor: command_suite
+    description: Run baseline commands, new guardrail commands, tests, and scans; record pass/fail and known exceptions.
+    requires:
+      - repo-governance-self-review:v1
+    outputs:
+      - repo-governance-verification:v1
+
+  - id: risk_review
+    type: review
+    actor: security_reviewer_agent
+    description: Review unresolved findings, accepted risks, suppressions, and future maintenance burden.
+    requires:
+      - repo-governance-verification:v1
+    outputs:
+      - repo-governance-risk-review:v1
+
+  - id: maintenance_handoff
+    type: finalize
+    actor: planner_agent
+    description: Produce a maintenance guide for future AI agents and humans, including commands, evidence, exception process, and update cadence.
+    requires:
+      - repo-governance-risk-review:v1
+    outputs:
+      - repo-governance-maintenance-plan:v1
+
+evidence:
+  markers:
+    - repo-governance-preflight:v1
+    - repo-intake:v1
+    - repo-baseline-inventory:v1
+    - dependency-structure-audit:v1
+    - security-baseline-audit:v1
+    - repo-governance-options:v1
+    - human-policy-agreement:v1
+    - repo-governance-implementation-plan:v1
+    - repo-governance-changes:v1
+    - repo-governance-remediation:v1
+    - repo-governance-self-review:v1
+    - repo-governance-verification:v1
+    - repo-governance-risk-review:v1
+    - repo-governance-maintenance-plan:v1
+
+human_gates:
+  - id: approve_policy
+    trigger: before_guardrail_implementation
+    required_output: explicit_policy_selection
+    approval_protocol:
+      marker: human-policy-agreement:v1
+      required_fields:
+        - selected_dependency_policy
+        - selected_security_policy
+        - accepted_risks
+        - implementation_scope
+      example: HUMAN_APPROVED_POLICY=yes scripts/agents/repo-governancectl.sh apply-approved-policy
+
+  - id: approve_sensitive_change
+    trigger: before_auth_secret_billing_ci_permission_or_production_change
+    required_output: explicit_human_approval
+    approval_protocol:
+      marker: sensitive-change-approval:v1
+      required_fields:
+        - change_type
+        - files_or_settings
+        - risk
+        - rollback_plan
+      example: Approve only after the human confirms the exact sensitive change and rollback plan.
+
+  - id: accept_unresolved_risk
+    trigger: before_closing_with_high_or_medium_unresolved_findings
+    required_output: explicit_risk_acceptance
+    approval_protocol:
+      marker: risk-acceptance-record:v1
+      required_fields:
+        - finding_id
+        - severity
+        - reason
+        - review_date
+      example: Record accepted risk in the PR or repository governance notes.
+
+safety:
+  stop_conditions:
+    - secrets_or_env_change
+    - billing_change
+    - auth_or_permission_change
+    - production_deploy
+    - destructive_data_change
+    - scanner_finds_plaintext_secret
+    - high_confidence_critical_vulnerability
+    - unclear_policy_choice
+    - broad_refactor_requested_without_scope
+    - generated_suppression_without_rationale
+    - ci_required_check_weakened_without_approval
+
+  irreversible_operations:
+    require_human_approval: true
+    require_structured_approval_record: true
+
+  default_boundaries:
+    prefer_additive_guardrails: true
+    prefer_report_then_fix: true
+    prefer_local_or_dev_dependency_over_global_install: true
+    prefer_ci_warning_mode_before_required_gate_when_false_positive_rate_is_unknown: true
+    forbid_secret_value_logging: true
+
+fallback_policy:
+  when_dependency_missing: use_available_language_native_tools_or_report_only
+  when_auth_missing: human_required
+  when_write_permission_missing: offer_report_only
+  when_global_install_needed: ask_human
+  when_scanner_unavailable: record_gap_and_recommend_setup
+  when_findings_are_ambiguous: ask_human_with_recommendation
+  when_repository_is_new: create_minimal_policy_and_guardrails_before_feature_growth
+
+verification:
+  validation_command: python -c "import json, pathlib, yaml; from jsonschema import Draft202012Validator; schema=json.loads(pathlib.Path('schema/scenario.schema.json').read_text()); data=yaml.safe_load(pathlib.Path('scenarios/repo-governance/dependency-security-governance.yaml').read_text()); Draft202012Validator(schema).validate(data)"
+  default_commands:
+    - git status --short
+    - scripts/agents/repo-governancectl.sh doctor
+    - scripts/agents/repo-governancectl.sh baseline
+    - scripts/agents/repo-governancectl.sh verify
+  typical_dependency_tools:
+    node_or_typescript:
+      - dependency-cruiser
+      - madge
+      - eslint-plugin-boundaries
+      - eslint-plugin-import
+    python:
+      - import-linter
+      - pydeps
+      - ruff
+    generic:
+      - graphviz
+      - language-native-build-or-test-graph
+  typical_security_tools:
+    sast:
+      - semgrep
+      - language-native-linters
+    secret_scan:
+      - gitleaks
+      - trufflehog
+    dependency_vulnerability:
+      - osv-scanner
+      - trivy
+      - npm audit
+      - pip-audit
+    supply_chain:
+      - lockfile_review
+      - dependency_review
+      - pinning_policy
