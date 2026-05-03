@@ -17,6 +17,7 @@ invariants:
   - Test evidence must be posted before merge-readiness reporting.
   - The workflow must stop if acceptance criteria are unclear.
   - Risky operations must be guarded by scripts.
+  - Irreversible approval must be scoped to a specific Issue, PR, head commit, and report marker.
 
 actors:
   human:
@@ -24,6 +25,7 @@ actors:
       - Provide the Issue number.
       - Answer decision briefs when needed.
       - Approve or reject merge after reading the merge-readiness report.
+      - Use the structured approval marker for irreversible operations.
 
   planner_agent:
     default: codex
@@ -168,10 +170,10 @@ state:
 entrypoints:
   start:
     command: scripts/agents/agentctl.sh start {issue} [--executor <alias>]
-  resume:
-    command: scripts/agents/agentctl.sh resume-current
+  merge_report:
+    command: scripts/agents/agentctl.sh merge-report {pr}
   merge_after_approval:
-    command: scripts/agents/agentctl.sh merge-current-approved
+    command: scripts/agents/agentctl.sh merge-after-human-approval {pr} {issue} {head_sha}
   status:
     command: scripts/agents/agentctl.sh status
   doctor:
@@ -231,9 +233,11 @@ steps:
     type: finalize
     actor: command_suite
     requires:
-      - explicit_human_approval == true
+      - structured_approval_marker exists
+      - approved_head_sha == current_pr_head_sha
       - codex-merge-report:v1 exists
       - agent-test-evidence:v1 exists
+      - required_checks_passing == true
       - no_blocking_reviews == true
 
 evidence:
@@ -253,11 +257,14 @@ human_gates:
   - id: approve_merge
     trigger: before_merge
     required_output: explicit_human_approval
-    accepted_phrases:
-      - merge ok
-      - approved
-      - マージOK
-      - マージしてよい
+    approval_protocol:
+      marker: APPROVE_MERGE
+      required_fields:
+        - issue
+        - pr
+        - head
+        - report
+      example: APPROVE_MERGE issue=123 pr=45 head=abc1234 report=codex-merge-report:v1
 
 safety:
   stop_conditions:
@@ -268,9 +275,11 @@ safety:
     - production_deploy
     - unclear_acceptance_criteria
     - risk_high
+    - pull_request_head_changed_after_approval
 
   irreversible_operations:
     require_human_approval: true
+    require_structured_approval_marker: true
 
 fallback_policy:
   when_dependency_missing: ask_human_with_recommendation
