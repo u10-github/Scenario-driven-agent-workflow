@@ -1,0 +1,286 @@
+id: issue-pr-to-merge-gate
+name: Issue to PR to merge gate
+version: 0.1.0
+
+purpose: >
+  Use a GitHub Issue to drive implementation, self-review, test evidence,
+  pull request creation, AI review, a merge-readiness report, and human approval.
+
+non_goals:
+  - Do not deploy to production.
+  - Do not change secrets or .env files.
+  - Do not merge without explicit human approval.
+  - Do not replace project-specific instructions.
+
+invariants:
+  - Human approval is required before merge.
+  - Test evidence must be posted before merge-readiness reporting.
+  - The workflow must stop if acceptance criteria are unclear.
+  - Risky operations must be guarded by scripts.
+
+actors:
+  human:
+    responsibilities:
+      - Provide the Issue number.
+      - Answer decision briefs when needed.
+      - Approve or reject merge after reading the merge-readiness report.
+
+  planner_agent:
+    default: codex
+    responsibilities:
+      - Read the Issue.
+      - Classify whether the work is autonomous, human-decision-required, blocked, or manual-only.
+      - Prepare plain-language decision briefs.
+
+  executor_agent:
+    default: opencode-deepseek-v4-max
+    aliases:
+      deepseek: opencode-deepseek-v4-max
+      kimi: opencode-kimi
+      codex-mini-high: codex-gpt5.4mini-high
+      manual: guided-manual
+    responsibilities:
+      - Implement the Issue within scope.
+      - Self-review its own changes.
+      - Fix only blocking review comments.
+
+  reviewer_agent:
+    default: codex
+    responsibilities:
+      - Review the PR.
+      - Write a plain-language merge-readiness report.
+
+  command_suite:
+    default: agentctl
+    responsibilities:
+      - Run GitHub and git commands.
+      - Run tests.
+      - Post evidence.
+      - Enforce merge guards.
+
+dependencies:
+  required:
+    - id: git
+      check: command -v git
+      missing: stop
+
+    - id: gh
+      check: command -v gh
+      missing: human_required
+
+  recommended:
+    - id: gh-auth
+      check: gh auth status
+      missing: human_required
+
+    - id: opencode
+      check: command -v opencode
+      fallback:
+        - id: codex-only
+          description: Use Codex as executor instead of OpenCode.
+        - id: report-only
+          description: Do not write. Produce reports only.
+
+    - id: codex
+      check: command -v codex
+      fallback:
+        - id: opencode-only
+          description: Use OpenCode for execution and manual review reports.
+        - id: report-only
+          description: Produce report-only output.
+
+  optional:
+    - id: jq
+      check: command -v jq
+      fallback:
+        - id: python-json
+          description: Use Python json module.
+        - id: node-json
+          description: Use Node.js JSON handling.
+
+install_policy:
+  project_local_dependency: allow_with_notice
+  dev_dependency: allow_with_notice
+  global_cli: human_required
+  auth_login: human_required
+  secret_write: forbidden
+  billing_or_paid_service: human_required
+  sudo_or_system_package: human_required
+
+runtime_modes:
+  - id: full-auto
+    description: Preferred mode. GitHub CLI, auth, Codex, and OpenCode are available.
+    requires:
+      - git
+      - gh
+      - gh-auth
+      - codex
+      - opencode
+
+  - id: codex-only
+    description: OpenCode is missing. Codex handles execution and review.
+    requires:
+      - git
+      - gh
+      - gh-auth
+      - codex
+
+  - id: report-only
+    description: Write operations are unavailable. Produce reports only.
+    requires:
+      - git
+
+model_policy:
+  cheap_or_fast:
+    use_for:
+      - status_summary
+      - command_result_summary
+
+  medium:
+    use_for:
+      - implementation
+      - self_review
+      - fixing_blocking_comments
+
+  strong:
+    use_for:
+      - intake_classification
+      - ambiguous_spec_decision
+      - security_sensitive_review
+      - merge_readiness_report
+
+  human:
+    required_for:
+      - merge_approval
+      - secrets
+      - billing
+      - production_release
+      - external_account_setup
+
+state:
+  local:
+    - .agent/state/current.json
+    - .agent/state/issue-{issue}.json
+  durable:
+    - github_issue_comments
+    - github_pr_comments
+
+entrypoints:
+  start:
+    command: scripts/agents/agentctl.sh start {issue} [--executor <alias>]
+  resume:
+    command: scripts/agents/agentctl.sh resume-current
+  merge_after_approval:
+    command: scripts/agents/agentctl.sh merge-current-approved
+  status:
+    command: scripts/agents/agentctl.sh status
+  doctor:
+    command: scripts/agents/agentctl.sh doctor
+
+steps:
+  - id: intake
+    type: classify
+    actor: planner_agent
+    outputs:
+      - codex-decision-brief:v1
+      - intake-result:v1
+
+  - id: implement
+    type: execute
+    actor: executor_agent
+    requires:
+      - intake_result == ai_autonomous OR human-decision:v1 exists
+
+  - id: executor_self_review
+    type: self_review
+    actor: executor_agent
+    outputs:
+      - executor-self-review:v1
+
+  - id: verification
+    type: verify
+    actor: command_suite
+    outputs:
+      - agent-test-evidence:v1
+
+  - id: create_pr
+    type: execute
+    actor: command_suite
+
+  - id: codex_review
+    type: review
+    actor: reviewer_agent
+    outputs:
+      - codex-review:v1
+
+  - id: fix_blocking
+    type: execute
+    actor: executor_agent
+    when: codex_review.decision == CHANGES_REQUESTED
+
+  - id: merge_report
+    type: review
+    actor: reviewer_agent
+    outputs:
+      - codex-merge-report:v1
+    gates:
+      - type: human_approval
+        marker: HUMAN_DECISION_REQUIRED
+
+  - id: merge
+    type: finalize
+    actor: command_suite
+    requires:
+      - explicit_human_approval == true
+      - codex-merge-report:v1 exists
+      - agent-test-evidence:v1 exists
+      - no_blocking_reviews == true
+
+evidence:
+  markers:
+    - codex-decision-brief:v1
+    - human-decision:v1
+    - executor-self-review:v1
+    - agent-test-evidence:v1
+    - codex-review:v1
+    - codex-merge-report:v1
+
+human_gates:
+  - id: clarify_spec
+    trigger: ambiguous_acceptance_criteria
+    output: codex-decision-brief:v1
+
+  - id: approve_merge
+    trigger: before_merge
+    required_output: explicit_human_approval
+    accepted_phrases:
+      - merge ok
+      - approved
+      - マージOK
+      - マージしてよい
+
+safety:
+  stop_conditions:
+    - secrets_or_env_change
+    - billing_change
+    - auth_or_permission_change
+    - destructive_data_change
+    - production_deploy
+    - unclear_acceptance_criteria
+    - risk_high
+
+  irreversible_operations:
+    require_human_approval: true
+
+fallback_policy:
+  when_dependency_missing: ask_human_with_recommendation
+  when_auth_missing: human_required
+  when_write_permission_missing: offer_report_only
+  when_global_install_needed: ask_human
+
+verification:
+  default_commands:
+    - npm run lint
+    - npm run typecheck
+    - npm run test
+    - npm run build
