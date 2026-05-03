@@ -11,6 +11,90 @@ This repository describes the idea in plain English.
 
 It is not a product, framework, or official standard. It is a pattern that others can copy, change, and develop in their own way.
 
+## What should I do next?
+
+If you want to try this idea, do not start by building a full framework.
+
+Start by asking a strong reasoning AI to adapt the scenario to your own environment.
+
+For example:
+
+```text
+Read the Scenario-driven agent workflow idea.
+
+Using the scenario YAML as a blueprint, design a workflow for my project.
+
+Do not assume my environment is the same as the author's.
+
+First, check what tools are available.
+Then decide which parts should be scripts, which parts should be handled by AI, and where human approval is required.
+
+Create:
+- an AGENTS.md fragment,
+- skill or instruction files if useful,
+- a command script layer,
+- evidence formats,
+- human approval gates,
+- and a short setup plan.
+
+Do not perform irreversible actions without explicit approval.
+```
+
+The scenario file is not meant to be executed blindly.
+
+It is meant to help an AI agent create a workflow that fits your tools, your project, and your risk tolerance.
+
+## Core idea
+
+This repository is not mainly about YAML.
+
+It is also not mainly about GitHub, Codex, OpenCode, or any specific model.
+
+The core idea is this:
+
+> Use AI to design and adapt the workflow, but move repeatable and safety-critical operations into scripts.
+
+Skills and prompts can guide an AI agent, but they are weak guardrails.
+
+Scripts can provide stronger guardrails.
+
+A Scenario-driven agent workflow is a way to let people create those script-based guardrails more reproducibly.
+
+This separation also helps you choose the right actor for each part of the work:
+
+```text
+Scripts
+  for deterministic checks and execution
+
+AI agents
+  for classification, adaptation, drafting, implementation, review, and reporting
+
+Stronger reasoning models
+  for ambiguity, risk review, workflow design, and final reports
+
+Smaller or cheaper models
+  for simpler summaries, formatting, and routine tasks
+
+Humans
+  for approval, responsibility, and external context
+```
+
+Cost control is not the main purpose.
+
+It is one possible result of separating the workflow clearly.
+
+Instead of telling an AI:
+
+```text
+Please be careful.
+```
+
+we ask the AI to help create:
+
+```text
+scripts that make being careful reproducible.
+```
+
 ## Why this exists
 
 Many AI agent workflows fall into two weak patterns:
@@ -35,7 +119,6 @@ The goal is to:
 
 - move repeatable work into scripts;
 - keep judgment-heavy work in AI;
-- use stronger or weaker models depending on the task;
 - reduce the number of human interruptions;
 - keep important human decisions explicit;
 - improve reproducibility;
@@ -60,6 +143,65 @@ scripts / command suite
 ```
 
 The AI should not invent the whole process each time. It should use the right scenario and command suite.
+
+## Why scenarios are written as YAML
+
+People use different tools.
+
+One person may use Codex and OpenCode.
+
+Another may use Claude Code, GitHub Copilot, Cursor, a local LLM, shell scripts, or a custom agent runner.
+
+Because of that, this repository does not assume one fixed runtime.
+
+Instead, the idea is distributed as a scenario.
+
+A scenario describes:
+
+- the goal;
+- the safety rules;
+- the preferred tools;
+- executor or model candidates;
+- fallback options;
+- the evidence that should be produced;
+- the human decision points.
+
+At deployment time, an AI agent should inspect the actual environment and turn the scenario into concrete files and commands.
+
+```text
+scenario YAML
+  -> AI reads the local environment
+  -> AI creates or adapts AGENTS.md
+  -> AI creates skill/instruction files if useful
+  -> AI creates scripts and command entrypoints
+  -> AI defines evidence and human gates
+  -> human reviews the plan
+  -> scripts enforce the important guardrails
+```
+
+The scenario can also help the AI choose a practical runtime mode:
+
+```text
+full-auto
+  preferred tools are available
+
+codex-only
+  OpenCode or another executor is missing
+
+report-only
+  write permission is missing
+
+guided-manual
+  scripts cannot safely run, so the AI prepares steps for a human or another tool
+```
+
+The scenario does not force one model or one tool.
+
+It gives the AI enough structure to choose a reasonable path for the current environment.
+
+The YAML is not the product.
+
+The YAML is a portable blueprint.
 
 ## What is a scenario?
 
@@ -91,27 +233,76 @@ At deployment time, the AI checks the actual environment:
 
 Then the AI compiles the scenario into a concrete plan for that environment.
 
-## Example
+## Example: the author's coding workflow
 
-For coding work, a scenario might look like this:
+The author's first concrete use case is a GitHub-based coding workflow.
+
+In that environment, the layers look like this:
 
 ```text
-Issue
-  -> intake / classify
-  -> ask human only if judgment is needed
-  -> implement
-  -> self-review
+Human
+  -> asks Codex to proceed with a GitHub Issue
+  -> answers only when a decision is needed
+  -> approves merge after reading a plain-language report
+
+AGENTS.md
+  -> project constitution
+  -> defines hard rules and safety boundaries
+
+skills
+  -> tell the AI when to use the workflow
+  -> explain how to classify work and when to stop
+
+scripts / agentctl
+  -> perform repeatable operations
+  -> check dependencies
   -> run tests
   -> post evidence
-  -> create PR
-  -> AI review
-  -> fix blocking comments
-  -> create a plain-language merge report
-  -> stop for human approval
-  -> merge only after explicit approval
+  -> enforce merge guards
+
+GitHub Issues / PRs / comments
+  -> shared memory
+  -> durable evidence
+  -> human review surface
+
+Codex
+  -> planning, intake, review, merge-readiness reports
+
+OpenCode + DeepSeek
+  -> implementation executor by default
+
+Other models
+  -> Kimi or smaller GPT models can be used depending on cost and task difficulty
 ```
 
-This is only one example. The same pattern can apply to incident response, documentation publishing, community operations, admin work, data analysis, and other repeatable tasks.
+A possible user experience is:
+
+```text
+Human:
+Please take Issue #123 up to the merge gate. Do not merge yet.
+
+AI:
+Checks the environment.
+Classifies the Issue.
+Asks for human judgment only if needed.
+Runs the scripted workflow.
+Creates a PR.
+Posts test evidence.
+Reviews the PR.
+Creates a merge-readiness report.
+Stops for human approval.
+
+Human:
+Approved. You may merge.
+
+AI:
+Runs the guarded merge script.
+Closes the linked Issue.
+```
+
+This is only one example.
+
+Your environment may be different, so your concrete scripts and tools may be different too.
 
 ## Important principle
 
@@ -136,6 +327,25 @@ scenarios/
   _template.yaml
   issue-pr-to-merge-gate.example.yaml
 ```
+
+## This is an idea seed
+
+This repository is not intended to become the one official implementation.
+
+It is an idea seed.
+
+Please fork it, copy the structure, rename the pattern, rewrite the scenarios, or build your own command suite.
+
+The important part is not this repository.
+
+The important part is the pattern:
+
+- describe the scenario;
+- let AI adapt it to the environment;
+- move repeatable work into scripts;
+- keep human gates for judgment;
+- record evidence;
+- choose models based on task difficulty and cost when useful.
 
 ## Maintenance model
 
